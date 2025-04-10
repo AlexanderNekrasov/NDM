@@ -56,10 +56,20 @@ def run(config, do_plots=False):
         uniform_prob=config["uniform_prob"],
     ).to(device)
 
-    optimizer = torch.optim.AdamW(
-        list(ndm.model.parameters()) + list(ndm.model_F.parameters()),
-        lr=config["learning_rate"],
-    )
+    # Initialize optimizer based on config
+    if config["optimizer_type"].lower() == "sgd":
+        optimizer = torch.optim.SGD(
+            list(ndm.model.parameters()) + list(ndm.model_F.parameters()),
+            lr=config["learning_rate"],
+            momentum=config["momentum"]
+        )
+    elif config["optimizer_type"].lower() == "adamw":
+        optimizer = torch.optim.AdamW(
+            list(ndm.model.parameters()) + list(ndm.model_F.parameters()),
+            lr=config["learning_rate"],
+        )
+    else:
+        raise ValueError(f"Unsupported optimizer type: {config['optimizer_type']}")
 
     # Calculate total steps and create scheduler
     total_training_steps = len(dataloader) * config["num_epochs"]
@@ -177,11 +187,11 @@ def run(config, do_plots=False):
 if __name__ == "__main__":
     # Configuration
     config = {
-        "experiment_name": "ndm_1000steps_clippingNone",
+        "experiment_name": "ndm_1000steps",
         "dataset": "checkerboard",
         "train_batch_size": 256,
         "eval_batch_size": 1000,
-        "num_epochs": 300,
+        "num_epochs": 1000,
         "learning_rate": 1e-4,
         "num_timesteps": 1000,
         # "schedule_config": {"type": "cosine", "min_alpha": 0.0001, "max_alpha": 0.9999},
@@ -189,11 +199,13 @@ if __name__ == "__main__":
         "embedding_size": 128,
         "hidden_size": 512,
         "hidden_layers": 5,
-        "save_images_step": 1,
+        "save_images_step": 20,
         "gradient_clipping": None,
         "dataset_size": 80000,
         "importance_sampling_batch_size": 10,
         "uniform_prob": 0.001,
+        "optimizer_type": "sgd",
+        "momentum": 0.9,
     }
 
     run(config, do_plots=False)
