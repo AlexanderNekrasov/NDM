@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import numpy as np
 from torch.optim import lr_scheduler
+import wandb
 
 import datasets
 from ndm import NDM, train_epoch
@@ -13,6 +14,14 @@ from network import MLP
 
 
 def run(config, do_plots=False):
+    # Initialize wandb
+    wandb.init(
+        entity="alexxela12345-hse-university",
+        project="ndm",
+        # name=config["experiment_name"],
+        config=config,
+    )
+
     device = torch.device(
         "cuda"
         if torch.cuda.is_available()
@@ -83,14 +92,22 @@ def run(config, do_plots=False):
             config["gradient_clipping"],
         )
         losses.extend(cur_losses)
-        epoch_losses.append(np.mean(cur_losses))
-        print(f"Epoch {epoch} finished with loss: {np.mean(cur_losses)}")
-        # plot losses in log scale
+        epoch_loss = np.mean(cur_losses)
+        epoch_losses.append(epoch_loss)
+        print(f"Epoch {epoch} finished with loss: {epoch_loss}")
+        
+        # Log metrics to wandb
+        wandb.log({
+            "epoch": epoch,
+            "loss": epoch_loss,
+            "learning_rate": scheduler.get_last_lr()[0],
+        }, step=epoch)
 
         if epoch % config["save_images_step"] == 0 or epoch == config["num_epochs"] - 1:
             # generate data with the model to later visualize the learning process
             sample = ndm.sample(config["eval_batch_size"])
             frames.append(sample.cpu().numpy())
+            
             if do_plots:
                 plt.figure(figsize=(40, 10))
 
@@ -122,12 +139,17 @@ def run(config, do_plots=False):
                 plt.title("Generated samples")
                 plt.scatter(frames[-1][:, 0], frames[-1][:, 1], s=7, alpha=1)
 
+                # Log the figure to wandb
+                wandb.log({"training_visualization": wandb.Image(plt)}, step=epoch)
                 plt.show()
+                plt.close()
 
     print("Saving model...")
     outdir = f"exps/{config['experiment_name']}"
     os.makedirs(outdir, exist_ok=True)
     torch.save(ndm.state_dict(), f"{outdir}/model.pth")
+    # save model to wandb
+    wandb.save(f"{outdir}/model.pth")
 
     print("Saving images...")
     imgdir = f"{outdir}/images"
@@ -147,6 +169,9 @@ def run(config, do_plots=False):
 
     print("Saving frames...")
     np.save(f"{outdir}/frames.npy", frames)
+    
+    # Finish wandb run
+    wandb.finish()
 
 
 if __name__ == "__main__":
