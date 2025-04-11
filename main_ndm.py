@@ -59,16 +59,25 @@ def run(config, do_plots=False):
     # Load pretrained model if specified
     if config["load_pretrained"]:
         if config["pretrained_model_path"] is None:
-            raise ValueError("pretrained_model_path must be specified when load_pretrained is True")
+            raise ValueError(
+                "pretrained_model_path must be specified when load_pretrained is True"
+            )
         if config["pretrained_run_id"]:
             print(f"Loading model from wandb run {config['pretrained_run_id']}")
-            model_path = wandb.restore(config["pretrained_model_path"], run_path=f"{config['pretrained_run_id']}")
+            model_path = wandb.restore(
+                config["pretrained_model_path"],
+                run_path=f"{config['pretrained_run_id']}",
+            )
             ndm.load_state_dict(torch.load(model_path.name, map_location=device))
         elif config["pretrained_model_path"]:
             print(f"Loading model from local path {config['pretrained_model_path']}")
-            ndm.load_state_dict(torch.load(config["pretrained_model_path"], map_location=device))
+            ndm.load_state_dict(
+                torch.load(config["pretrained_model_path"], map_location=device)
+            )
         else:
-            raise ValueError("Either pretrained_run_id or pretrained_model_path must be specified when load_pretrained is True")
+            raise ValueError(
+                "Either pretrained_run_id or pretrained_model_path must be specified when load_pretrained is True"
+            )
 
     wandb.watch(ndm, log_freq=100)
 
@@ -78,13 +87,13 @@ def run(config, do_plots=False):
             list(ndm.model.parameters()) + list(ndm.model_F.parameters()),
             lr=config["learning_rate"],
             momentum=config["momentum"],
-            weight_decay=config["weight_decay"]
+            weight_decay=config["weight_decay"],
         )
     elif config["optimizer_type"].lower() == "adamw":
         optimizer = torch.optim.AdamW(
             list(ndm.model.parameters()) + list(ndm.model_F.parameters()),
             lr=config["learning_rate"],
-            weight_decay=config["weight_decay"]
+            weight_decay=config["weight_decay"],
         )
     else:
         raise ValueError(f"Unsupported optimizer type: {config['optimizer_type']}")
@@ -123,19 +132,22 @@ def run(config, do_plots=False):
         epoch_loss = np.mean(cur_losses)
         epoch_losses.append(epoch_loss)
         print(f"Epoch {epoch} finished with loss: {epoch_loss}")
-        
+
         # Log metrics to wandb
-        wandb.log({
-            "epoch": epoch + config["pretrained_epochs"],
-            "loss": epoch_loss,
-            "learning_rate": scheduler.get_last_lr()[0],
-        }, step=epoch + config["pretrained_epochs"])
+        wandb.log(
+            {
+                "epoch": epoch + config["pretrained_epochs"],
+                "loss": epoch_loss,
+                "learning_rate": scheduler.get_last_lr()[0],
+            },
+            step=epoch + config["pretrained_epochs"],
+        )
 
         if epoch % config["save_images_step"] == 0 or epoch == config["num_epochs"] - 1:
             # generate data with the model to later visualize the learning process
             sample = ndm.sample(config["eval_batch_size"])
             frames.append(sample.cpu().numpy())
-            
+
             if do_plots:
                 plt.figure(figsize=(40, 10))
 
@@ -168,7 +180,10 @@ def run(config, do_plots=False):
                 plt.scatter(frames[-1][:, 0], frames[-1][:, 1], s=7, alpha=1)
 
                 # Log the figure to wandb
-                wandb.log({"training_visualization": wandb.Image(plt)}, step=epoch + config["pretrained_epochs"])
+                wandb.log(
+                    {"training_visualization": wandb.Image(plt)},
+                    step=epoch + config["pretrained_epochs"],
+                )
                 plt.show()
                 plt.close()
 
@@ -197,7 +212,7 @@ def run(config, do_plots=False):
 
     print("Saving frames...")
     np.save(f"{outdir}/frames.npy", frames)
-    
+
     # Finish wandb run
     wandb.finish()
 

@@ -6,118 +6,238 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import numpy as np
 from torch.optim import lr_scheduler
+import wandb
 
 import datasets
 from ddpm import DDPM, train_epoch
 from network import MLP
 
 
-# Configuration
-config = {
-    "experiment_name": "base_1000steps",
-    "dataset": "checkerboard",
-    "train_batch_size": 256,
-    "eval_batch_size": 1000,
-    "num_epochs": 300,
-    "learning_rate": 1e-4,
-    "num_timesteps": 1000,
-    "embedding_size": 128,
-    "hidden_size": 512,
-    "hidden_layers": 5,
-    "save_images_step": 20,
-}
-
-device = torch.device(
-    "cuda"
-    if torch.cuda.is_available()
-    else "mps" if torch.backends.mps.is_available() else "cpu"
-)
-print(f"Using device: {device}")
-
-dataset = datasets.get_dataset(config["dataset"])
-dataloader = DataLoader(
-    dataset, batch_size=config["train_batch_size"], shuffle=True, drop_last=True
-)
-
-model = MLP(
-    hidden_size=config["hidden_size"],
-    hidden_layers=config["hidden_layers"],
-    emb_size=config["embedding_size"],
-)
-
-
-ddpm = DDPM(model=model, num_timesteps=config["num_timesteps"]).to(device)
-
-optimizer = torch.optim.AdamW(
-    ddpm.model.parameters(),
-    lr=config["learning_rate"],
-)
-
-# Calculate total steps and create scheduler
-total_training_steps = len(dataloader) * config["num_epochs"]
-final_lr = 1e-8
-lr_lambda = (
-    lambda current_step: max(
-        0.0,
-        float(total_training_steps - current_step)
-        / float(max(1, total_training_steps)),
+def run(config, do_plots=False):
+    # Initialize wandb
+    wandb.init(
+        entity="alexxela12345-hse-university",
+        project="ndm",
+        # name=config["experiment_name"],
+        config=config,
     )
-    * (1.0 - final_lr / config["learning_rate"])
-    + final_lr / config["learning_rate"]
-)
-# Using LambdaLR for more explicit linear decay control
-scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
-global_step = 0
-frames = []
-losses = []
-print("Training model...")
-for epoch in range(config["num_epochs"]):
-    print(f"Epoch {epoch}")
-    global_step, epoch_losses = train_epoch(
-        ddpm, dataloader, optimizer, scheduler, global_step
+    device = torch.device(
+        "cuda"
+        if torch.cuda.is_available()
+        else "mps" if torch.backends.mps.is_available() else "cpu"
     )
-    losses.extend(epoch_losses)
-    print(f"Epoch {epoch} finished with loss: {np.mean(epoch_losses)}")
-    # plot losses in log scale
 
-    if epoch % config["save_images_step"] == 0 or epoch == config["num_epochs"] - 1:
-        # generate data with the model to later visualize the learning process
-        sample = ddpm.sample(config["eval_batch_size"])
-        frames.append(sample.cpu().numpy())
-        # plt.figure(figsize=(20, 10))
+    print(f"Using device: {device}")
 
-        # plt.subplot(1, 2, 1)
-        # plt.plot(list(range(len(losses))), losses)
-        # plt.yscale("log")
+    dataset = datasets.get_dataset(config["dataset"], n=config["dataset_size"])
+    dataloader = DataLoader(
+        dataset, batch_size=config["train_batch_size"], shuffle=True, drop_last=True
+    )
 
-        # plt.subplot(1, 2, 2)
-        # plt.xlim(-6, 6)
-        # plt.ylim(-6, 6)
-        # plt.scatter(frames[-1][:, 0], frames[-1][:, 1])
+    model = MLP(
+        hidden_size=config["hidden_size"],
+        hidden_layers=config["hidden_layers"],
+        emb_size=config["embedding_size"],
+    )
 
-        # plt.show()
+    ddpm = DDPM(
+        model=model,
+        schedule_config=config["schedule_config"],
+        num_timesteps=config["num_timesteps"],
+        importance_sampling_batch_size=config["importance_sampling_batch_size"],
+        uniform_prob=config["uniform_prob"],
+    ).to(device)
 
-print("Saving model...")
-outdir = f"exps/{config['experiment_name']}"
-os.makedirs(outdir, exist_ok=True)
-torch.save(ddpm.model.state_dict(), f"{outdir}/model.pth")
+    # Load pretrained model if specified
+    if config["load_pretrained"]:
+        if config["pretrained_model_path"] is None:
+            raise ValueError(
+                "pretrained_model_path must be specified when load_pretrained is True"
+            )
+        if config["pretrained_run_id"]:
+            print(f"Loading model from wandb run {config['pretrained_run_id']}")
+            model_path = wandb.restore(
+                config["pretrained_model_path"],
+                run_path=f"{config['pretrained_run_id']}",
+            )
+            ddpm.load_state_dict(torch.load(model_path.name, map_location=device))
+        elif config["pretrained_model_path"]:
+            print(f"Loading model from local path {config['pretrained_model_path']}")
+            ddpm.load_state_dict(
+                torch.load(config["pretrained_model_path"], map_location=device)
+            )
+        else:
+            raise ValueError(
+                "Either pretrained_run_id or pretrained_model_path must be specified when load_pretrained is True"
+            )
 
-print("Saving images...")
-imgdir = f"{outdir}/images"
-os.makedirs(imgdir, exist_ok=True)
-frames = np.stack(frames)
-xmin, xmax = -6, 6
-ymin, ymax = -6, 6
-for i, frame in enumerate(frames):
-    plt.figure(figsize=(10, 10))
-    plt.scatter(frame[:, 0], frame[:, 1])
-    plt.xlim(xmin, xmax)
-    plt.ylim(ymin, ymax)
-    plt.savefig(f"{imgdir}/{i:04}.png")
-    plt.close()
-print("Saving loss as numpy array...")
-np.save(f"{outdir}/loss.npy", np.array(losses))
+    wandb.watch(ddpm, log_freq=100)
 
-print("Saving frames...")
-np.save(f"{outdir}/frames.npy", frames)
+    # Initialize optimizer based on config
+    if config["optimizer_type"].lower() == "sgd":
+        optimizer = torch.optim.SGD(
+            list(ddpm.model.parameters()),
+            lr=config["learning_rate"],
+            momentum=config["momentum"],
+            weight_decay=config["weight_decay"],
+        )
+    elif config["optimizer_type"].lower() == "adamw":
+        optimizer = torch.optim.AdamW(
+            list(ddpm.model.parameters()),
+            lr=config["learning_rate"],
+            weight_decay=config["weight_decay"],
+        )
+    else:
+        raise ValueError(f"Unsupported optimizer type: {config['optimizer_type']}")
+
+    # Calculate total steps and create scheduler
+    total_training_steps = len(dataloader) * config["num_epochs"]
+    final_lr = 1e-8
+    lr_lambda = (
+        lambda current_step: max(
+            0.0,
+            float(total_training_steps - current_step)
+            / float(max(1, total_training_steps)),
+        )
+        * (1.0 - final_lr / config["learning_rate"])
+        + final_lr / config["learning_rate"]
+    )
+    # Using LambdaLR for more explicit linear decay control
+    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
+
+    global_step = 0
+    frames = []
+    losses = []
+    epoch_losses = []
+    print("Training model...")
+    for epoch in range(config["num_epochs"]):
+        print(f"Epoch {epoch}")
+        global_step, cur_losses = train_epoch(
+            ddpm,
+            dataloader,
+            optimizer,
+            scheduler,
+            global_step,
+            config["gradient_clipping"],
+        )
+        losses.extend(cur_losses)
+        epoch_loss = np.mean(cur_losses)
+        epoch_losses.append(epoch_loss)
+        print(f"Epoch {epoch} finished with loss: {epoch_loss}")
+
+        # Log metrics to wandb
+        wandb.log(
+            {
+                "epoch": epoch + config["pretrained_epochs"],
+                "loss": epoch_loss,
+                "learning_rate": scheduler.get_last_lr()[0],
+            },
+            step=epoch + config["pretrained_epochs"],
+        )
+
+        if epoch % config["save_images_step"] == 0 or epoch == config["num_epochs"] - 1:
+            # generate data with the model to later visualize the learning process
+            sample = ddpm.sample(config["eval_batch_size"])
+            frames.append(sample.cpu().numpy())
+
+            plt.figure(figsize=(40, 10))
+
+            plt.subplot(1, 5, 1)
+            plt.title("Loss per step")
+            plt.plot(list(range(len(losses))), losses)
+            plt.yscale("log")
+
+            plt.subplot(1, 5, 2)
+            plt.title("Loss per epoch")
+            plt.plot(list(range(len(epoch_losses))), epoch_losses)
+            plt.yscale("log")
+
+            plt.subplot(1, 5, 3)
+            plt.title("Dataset samples")
+            points = [dataset[i][0] for i in range(len(dataset))]
+            points = torch.stack(points, dim=0)
+            plt.xlim(-2, 2)
+            plt.ylim(-2, 2)
+            plt.scatter(points[:, 0], points[:, 1], s=1, alpha=0.5)
+
+            plt.subplot(1, 5, 4)
+            plt.title("Generated samples (cropped)")
+            plt.xlim(-2, 2)
+            plt.ylim(-2, 2)
+            plt.scatter(frames[-1][:, 0], frames[-1][:, 1], s=7, alpha=1)
+
+            plt.subplot(1, 5, 5)
+            plt.title("Generated samples")
+            plt.scatter(frames[-1][:, 0], frames[-1][:, 1], s=7, alpha=1)
+
+            # Log the figure to wandb
+            wandb.log(
+                {"training_visualization": wandb.Image(plt)},
+                step=epoch + config["pretrained_epochs"],
+            )
+            if do_plots:
+                plt.show()
+            plt.close()
+
+    print("Saving model...")
+    outdir = f"exps/{config['experiment_name']}"
+    os.makedirs(outdir, exist_ok=True)
+    torch.save(ddpm.state_dict(), f"{outdir}/model.pth")
+    # save model to wandb
+    wandb.save(f"{outdir}/model.pth")
+
+    print("Saving images...")
+    imgdir = f"{outdir}/images"
+    os.makedirs(imgdir, exist_ok=True)
+    frames = np.stack(frames)
+    xmin, xmax = -6, 6
+    ymin, ymax = -6, 6
+    for i, frame in enumerate(frames):
+        plt.figure(figsize=(10, 10))
+        plt.scatter(frame[:, 0], frame[:, 1])
+        plt.xlim(xmin, xmax)
+        plt.ylim(ymin, ymax)
+        plt.savefig(f"{imgdir}/{i:04}.png")
+        plt.close()
+    print("Saving loss as numpy array...")
+    np.save(f"{outdir}/loss.npy", np.array(losses))
+
+    print("Saving frames...")
+    np.save(f"{outdir}/frames.npy", frames)
+
+    # Finish wandb run
+    wandb.finish()
+
+
+if __name__ == "__main__":
+    # Configuration
+    config = {
+        "experiment_name": "ddpm_1000steps",
+        "dataset": "checkerboard",
+        "train_batch_size": 256,
+        "eval_batch_size": 1000,
+        "num_epochs": 1000,
+        "learning_rate": 1e-4,
+        "num_timesteps": 1000,
+        # "schedule_config": {"type": "cosine", "min_alpha": 0.0001, "max_alpha": 0.9999},
+        "schedule_config": {"type": "linear", "beta_start": 0.0001, "beta_end": 0.02},
+        "embedding_size": 128,
+        "hidden_size": 512,
+        "hidden_layers": 5,
+        "save_images_step": 20,
+        "gradient_clipping": None,
+        "dataset_size": 80000,
+        "importance_sampling_batch_size": 10,
+        "uniform_prob": 0.001,
+        "optimizer_type": "sgd",
+        "momentum": 0.9,
+        "weight_decay": 0.0001,
+        # New parameters for model loading
+        "load_pretrained": False,
+        "pretrained_run_id": None,  # wandb run ID to load model from
+        "pretrained_model_path": None,  # local path to load model from (alternative to wandb)
+        "pretrained_epochs": 0,  # number of epochs the pretrained model was trained for
+    }
+
+    run(config, do_plots=False)

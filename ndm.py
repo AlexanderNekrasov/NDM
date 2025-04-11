@@ -50,7 +50,8 @@ class NDM(nn.Module):
             min_alpha = schedule_config["min_alpha"]
             max_alpha = schedule_config["max_alpha"]
             alphas_cumprod = (
-                torch.cos(ts * (torch.pi / 2)) ** 2 * (max_alpha - min_alpha) + min_alpha
+                torch.cos(ts * (torch.pi / 2)) ** 2 * (max_alpha - min_alpha)
+                + min_alpha
             )
         else:
             raise ValueError(f"Unknown schedule type: {schedule_config['type']}")
@@ -168,29 +169,36 @@ def train_epoch(
         batch = batch[0].to(device)
         noise = torch.randn(batch.shape, device=device)
 
-        if importance_sampling and ndm.L_t_counts.min() >= ndm.importance_sampling_batch_size:
+        if (
+            importance_sampling
+            and ndm.L_t_counts.min() >= ndm.importance_sampling_batch_size
+        ):
             weights = torch.sqrt(torch.mean(ndm.L_t**2, dim=1))
             weights = weights / weights.sum()
-            
+
             # Add numerical stability checks
             epsilon = 1e-6
             if torch.isnan(weights).any() or torch.isinf(weights).any():
-                print("Warning: Weights contain NaN or Inf values, using uniform weights")
-                weights = torch.ones(ndm.num_timesteps, device=device) / ndm.num_timesteps
+                print(
+                    "Warning: Weights contain NaN or Inf values, using uniform weights"
+                )
+                weights = (
+                    torch.ones(ndm.num_timesteps, device=device) / ndm.num_timesteps
+                )
             elif torch.abs(weights.sum() - 1.0) > epsilon:
                 print("Warning: Weights sum is not close to 1, using uniform weights")
-                weights = torch.ones(ndm.num_timesteps, device=device) / ndm.num_timesteps
-            
-            weights = weights * (1 - ndm.uniform_prob) + ndm.uniform_prob / len(
-                weights
-            )
+                weights = (
+                    torch.ones(ndm.num_timesteps, device=device) / ndm.num_timesteps
+                )
+
+            weights = weights * (1 - ndm.uniform_prob) + ndm.uniform_prob / len(weights)
         else:
             weights = torch.ones(ndm.num_timesteps, device=device)
             weights = weights / weights.sum()
         timesteps = (
-            torch.multinomial(
-                weights, num_samples=batch.shape[0], replacement=True
-            ).to(device)
+            torch.multinomial(weights, num_samples=batch.shape[0], replacement=True).to(
+                device
+            )
             + 1
         )
 
