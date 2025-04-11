@@ -171,6 +171,16 @@ def train_epoch(
         if importance_sampling and ndm.L_t_counts.min() >= ndm.importance_sampling_batch_size:
             weights = torch.sqrt(torch.mean(ndm.L_t**2, dim=1))
             weights = weights / weights.sum()
+            
+            # Add numerical stability checks
+            epsilon = 1e-6
+            if torch.isnan(weights).any() or torch.isinf(weights).any():
+                print("Warning: Weights contain NaN or Inf values, using uniform weights")
+                weights = torch.ones(ndm.num_timesteps, device=device) / ndm.num_timesteps
+            elif torch.abs(weights.sum() - 1.0) > epsilon:
+                print("Warning: Weights sum is not close to 1, using uniform weights")
+                weights = torch.ones(ndm.num_timesteps, device=device) / ndm.num_timesteps
+            
             weights = weights * (1 - ndm.uniform_prob) + ndm.uniform_prob / len(
                 weights
             )
