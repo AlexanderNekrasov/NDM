@@ -163,7 +163,13 @@ class DDPM(nn.Module):
 
 
 def train_epoch(
-    ddpm: DDPM, dataloader, optimizer, scheduler, global_step, gradient_clipping=0.1
+    ddpm: DDPM,
+    dataloader,
+    optimizer,
+    scheduler,
+    global_step,
+    gradient_clipping=0.1,
+    use_simplified_loss=False,
 ):
     importance_sampling = ddpm.importance_sampling_batch_size is not None
 
@@ -220,7 +226,7 @@ def train_epoch(
 
         noisy = ddpm.add_noise(batch, noise, timesteps)
         noise_pred = ddpm.model(noisy, timesteps)
-        # loss_simple = F.mse_loss(noise_pred, noise)
+        loss_simple = F.mse_loss(noise_pred, noise)
         mu = ddpm.q_posterior(batch, noisy, timesteps)
         xhat = ddpm.reconstruct_x0(noisy, timesteps, noise_pred)
         mu_hat = ddpm.q_posterior(xhat, noisy, timesteps)
@@ -231,7 +237,10 @@ def train_epoch(
         loss_mean = (loss_nll / weights[timesteps - 1]).mean()
 
         optimizer.zero_grad()
-        loss_mean.backward()
+        if use_simplified_loss:
+            loss_simple.backward()
+        else:
+            loss_mean.backward()
         if gradient_clipping is not None:
             nn.utils.clip_grad_norm_(ddpm.model.parameters(), gradient_clipping)
         optimizer.step()
