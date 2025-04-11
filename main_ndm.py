@@ -56,17 +56,21 @@ def run(config, do_plots=False):
         uniform_prob=config["uniform_prob"],
     ).to(device)
 
+    wandb.watch(ndm, log_freq=100)
+
     # Initialize optimizer based on config
     if config["optimizer_type"].lower() == "sgd":
         optimizer = torch.optim.SGD(
             list(ndm.model.parameters()) + list(ndm.model_F.parameters()),
             lr=config["learning_rate"],
-            momentum=config["momentum"]
+            momentum=config["momentum"],
+            weight_decay=config["weight_decay"]
         )
     elif config["optimizer_type"].lower() == "adamw":
         optimizer = torch.optim.AdamW(
             list(ndm.model.parameters()) + list(ndm.model_F.parameters()),
             lr=config["learning_rate"],
+            weight_decay=config["weight_decay"]
         )
     else:
         raise ValueError(f"Unsupported optimizer type: {config['optimizer_type']}")
@@ -206,6 +210,7 @@ if __name__ == "__main__":
         "uniform_prob": 0.001,
         "optimizer_type": "sgd",
         "momentum": 0.9,
+        "weight_decay": 0.00001,
     }
 
     run(config, do_plots=False)
