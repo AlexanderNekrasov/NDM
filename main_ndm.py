@@ -56,6 +56,20 @@ def run(config, do_plots=False):
         uniform_prob=config["uniform_prob"],
     ).to(device)
 
+    # Load pretrained model if specified
+    if config["load_pretrained"]:
+        if config["pretrained_model_path"] is None:
+            raise ValueError("pretrained_model_path must be specified when load_pretrained is True")
+        if config["pretrained_run_id"]:
+            print(f"Loading model from wandb run {config['pretrained_run_id']}")
+            model_path = wandb.restore(config["pretrained_model_path"], run_path=f"{config['pretrained_run_id']}")
+            ndm.load_state_dict(torch.load(model_path.name, map_location=device))
+        elif config["pretrained_model_path"]:
+            print(f"Loading model from local path {config['pretrained_model_path']}")
+            ndm.load_state_dict(torch.load(config["pretrained_model_path"], map_location=device))
+        else:
+            raise ValueError("Either pretrained_run_id or pretrained_model_path must be specified when load_pretrained is True")
+
     wandb.watch(ndm, log_freq=100)
 
     # Initialize optimizer based on config
@@ -112,10 +126,10 @@ def run(config, do_plots=False):
         
         # Log metrics to wandb
         wandb.log({
-            "epoch": epoch,
+            "epoch": epoch + config["pretrained_epochs"],
             "loss": epoch_loss,
             "learning_rate": scheduler.get_last_lr()[0],
-        }, step=epoch)
+        }, step=epoch + config["pretrained_epochs"])
 
         if epoch % config["save_images_step"] == 0 or epoch == config["num_epochs"] - 1:
             # generate data with the model to later visualize the learning process
@@ -154,7 +168,7 @@ def run(config, do_plots=False):
                 plt.scatter(frames[-1][:, 0], frames[-1][:, 1], s=7, alpha=1)
 
                 # Log the figure to wandb
-                wandb.log({"training_visualization": wandb.Image(plt)}, step=epoch)
+                wandb.log({"training_visualization": wandb.Image(plt)}, step=epoch + config["pretrained_epochs"])
                 plt.show()
                 plt.close()
 
@@ -206,11 +220,16 @@ if __name__ == "__main__":
         "save_images_step": 20,
         "gradient_clipping": None,
         "dataset_size": 80000,
-        "importance_sampling_batch_size": 10,
+        "importance_sampling_batch_size": None,
         "uniform_prob": 0.001,
         "optimizer_type": "sgd",
         "momentum": 0.9,
-        "weight_decay": 0.00001,
+        "weight_decay": 0.0001,
+        # New parameters for model loading
+        "load_pretrained": True,
+        "pretrained_run_id": "ndm/esjakfmk",  # wandb run ID to load model from
+        "pretrained_model_path": "exps/ndm_1000steps/model.pth",  # local path to load model from (alternative to wandb)
+        "pretrained_epochs": 1000,  # number of epochs the pretrained model was trained for
     }
 
     run(config, do_plots=False)
