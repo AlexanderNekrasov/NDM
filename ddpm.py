@@ -61,14 +61,6 @@ class DDPM(nn.Module):
             raise ValueError(f"Unknown schedule type: {schedule_config['type']}")
 
         print("alphas_cumpod:", alphas_cumprod)
-        # compute betas and alphas from alphas_cumprod
-        # betas are fractions of neighboring alphas_cumprod
-        alphas: Float[Tensor, "{num_timesteps}"] = (
-            alphas_cumprod[1:] / alphas_cumprod[:-1]
-        )
-        betas: Float[Tensor, "{num_timesteps}"] = 1.0 - alphas
-        self.register_buffer("betas", betas)
-        self.register_buffer("alphas", alphas)
         self.register_buffer("alphas_cumprod", alphas_cumprod)
 
     def reconstruct_x0(
@@ -84,33 +76,44 @@ class DDPM(nn.Module):
         return s1 * x_t - s2 * noise
 
     def q_posterior(
-        self, x_0: Float[Tensor, "B 2"], x_t: Float[Tensor, "B 2"], t: Int[Tensor, "B"]
+        self,
+        x_0: Float[Tensor, "B 2"],
+        x_t: Float[Tensor, "B 2"],
+        t: Int[Tensor, "B"] | Int[Tensor, ""],
     ):
-        s1 = (
-            self.betas[t - 1]
-            * torch.sqrt(self.alphas_cumprod[t - 1])
-            / (1.0 - self.alphas_cumprod[t])
+        B = x_0.shape[0]
+        assert torch.is_tensor(t)
+        assert t.shape == (B,) or t.shape == ()
+        assert (1 <= t).all() and (t <= self.num_timesteps).all()
+
+        a_s = self.alphas_cumprod[t - 1]
+        a_t = self.alphas_cumprod[t]
+        sigma_s = torch.sqrt(1 - a_s)
+        sigma_t = torch.sqrt(1 - a_t)
+        sigma_st = torch.sqrt(
+            (sigma_t**2 - a_t / a_s * sigma_s**2) * sigma_s**2 / sigma_t**2
         )
-        s2 = (
-            (1.0 - self.alphas_cumprod[t - 1])
-            * torch.sqrt(self.alphas[t - 1])
-            / (1.0 - self.alphas_cumprod[t])
-        )
+
+        s0 = torch.sqrt(self.alphas_cumprod[t - 1])
+        s1 = -torch.sqrt(sigma_s**2 - sigma_st**2) / sigma_t * torch.sqrt(a_t)
+        s2 = torch.sqrt(sigma_s**2 - sigma_st**2) / sigma_t
+
+        s0 = s0.reshape(-1, 1)
         s1 = s1.reshape(-1, 1)
         s2 = s2.reshape(-1, 1)
-        mu = s1 * x_0 + s2 * x_t
+
+        mu = (s0 + s1) * x_0 + s2 * x_t
         return mu
 
     def get_variance(self, t: Int[Tensor, "B"]):
-        if t == 1:
-            return 0
-
-        variance = (
-            self.betas[t - 1]
-            * (1.0 - self.alphas_cumprod[t - 1])
-            / (1.0 - self.alphas_cumprod[t])
+        a_s = self.alphas_cumprod[t - 1]
+        a_t = self.alphas_cumprod[t]
+        sigma_s = torch.sqrt(1 - a_s)
+        sigma_t = torch.sqrt(1 - a_t)
+        sigma_st = torch.sqrt(
+            (sigma_t**2 - a_t / a_s * sigma_s**2) * sigma_s**2 / sigma_t**2
         )
-        variance = variance.clip(1e-20)
+        variance = sigma_st**2
         return variance
 
     def step(

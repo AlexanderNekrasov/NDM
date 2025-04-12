@@ -231,8 +231,8 @@ if __name__ == "__main__":
         # "schedule_config": {"type": "cosine", "min_alpha": 0.0001, "max_alpha": 0.9999},
         "schedule_config": {"type": "linear", "beta_start": 0.0001, "beta_end": 0.02},
         "embedding_size": 128,
-        "hidden_size": 768,
-        "hidden_layers": 6,
+        "hidden_size": 512,
+        "hidden_layers": 5,
         "save_images_step": 20,
         "gradient_clipping": None,
         "dataset_size": 80000,
@@ -246,7 +246,7 @@ if __name__ == "__main__":
         "pretrained_run_id": None,  # wandb run ID to load model from
         "pretrained_model_path": None,  # local path to load model from (alternative to wandb)
         "pretrained_epochs": 0,  # number of epochs the pretrained model was trained for
-        "use_simplified_loss": True,
+        "use_simplified_loss": False,
     }
 
-    run(config, do_plots=False)
+    run(config, do_plots=True)

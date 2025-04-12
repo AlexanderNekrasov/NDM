@@ -57,8 +57,6 @@ class NDM(nn.Module):
             raise ValueError(f"Unknown schedule type: {schedule_config['type']}")
 
         print("alphas_cumpod:", alphas_cumprod)
-        # self.register_buffer("betas", betas)
-        # self.register_buffer("alphas", alphas)
         self.register_buffer("alphas_cumprod", alphas_cumprod)
 
     def F(self, x, t):
