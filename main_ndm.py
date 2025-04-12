@@ -196,7 +196,8 @@ def run(config, do_plots=False):
     os.makedirs(outdir, exist_ok=True)
     torch.save(ndm.state_dict(), f"{outdir}/model.pth")
     # save model to wandb
-    wandb.save(f"{outdir}/model.pth")
+    if config["wandb_logging"]:
+        wandb.save(f"{outdir}/model.pth")
 
     print("Saving images...")
     imgdir = f"{outdir}/images"
@@ -218,7 +219,8 @@ def run(config, do_plots=False):
     np.save(f"{outdir}/frames.npy", frames)
 
     # Finish wandb run
-    wandb.finish()
+    if config["wandb_logging"]:
+        wandb.finish()
 
 
 if __name__ == "__main__":
