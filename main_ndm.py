@@ -227,7 +227,7 @@ if __name__ == "__main__":
     # Configuration
     config = {
         "experiment_name": "ndm_1000steps",
-        "wandb_logging": False,
+        "wandb_logging": True,
         "dataset": "checkerboard",
         "train_batch_size": 256,
         "eval_batch_size": 1000,

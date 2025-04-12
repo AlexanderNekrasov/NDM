@@ -15,12 +15,13 @@ from network import MLP
 
 def run(config, do_plots=False):
     # Initialize wandb
-    wandb.init(
-        entity="alexxela12345-hse-university",
-        project="ndm",
-        # name=config["experiment_name"],
-        config=config,
-    )
+    if config["wandb_logging"]:
+        wandb.init(
+            entity="alexxela12345-hse-university",
+            project="ndm",
+            # name=config["experiment_name"],
+            config=config,
+        )
 
     device = torch.device(
         "cuda"
@@ -72,7 +73,8 @@ def run(config, do_plots=False):
                 "Either pretrained_run_id or pretrained_model_path must be specified when load_pretrained is True"
             )
 
-    wandb.watch(ddpm, log_freq=100)
+    if config["wandb_logging"]:
+        wandb.watch(ddpm, log_freq=100)
 
     # Initialize optimizer based on config
     if config["optimizer_type"].lower() == "sgd":
@@ -128,14 +130,15 @@ def run(config, do_plots=False):
         print(f"Epoch {epoch} finished with loss: {epoch_loss}")
 
         # Log metrics to wandb
-        wandb.log(
-            {
-                "epoch": epoch + config["pretrained_epochs"],
-                "loss": epoch_loss,
-                "learning_rate": scheduler.get_last_lr()[0],
-            },
-            step=epoch + config["pretrained_epochs"],
-        )
+        if config["wandb_logging"]:
+            wandb.log(
+                {
+                    "epoch": epoch + config["pretrained_epochs"],
+                    "loss": epoch_loss,
+                    "learning_rate": scheduler.get_last_lr()[0],
+                },
+                step=epoch + config["pretrained_epochs"],
+            )
 
         if epoch % config["save_images_step"] == 0 or epoch == config["num_epochs"] - 1:
             # generate data with the model to later visualize the learning process
@@ -173,10 +176,11 @@ def run(config, do_plots=False):
             plt.scatter(frames[-1][:, 0], frames[-1][:, 1], s=7, alpha=1)
 
             # Log the figure to wandb
-            wandb.log(
-                {"training_visualization": wandb.Image(plt)},
-                step=epoch + config["pretrained_epochs"],
-            )
+            if config["wandb_logging"]:
+                wandb.log(
+                    {"training_visualization": wandb.Image(plt)},
+                    step=epoch + config["pretrained_epochs"],
+                )
             if do_plots:
                 plt.show()
             plt.close()
@@ -186,7 +190,8 @@ def run(config, do_plots=False):
     os.makedirs(outdir, exist_ok=True)
     torch.save(ddpm.state_dict(), f"{outdir}/model.pth")
     # save model to wandb
-    wandb.save(f"{outdir}/model.pth")
+    if config["wandb_logging"]:
+        wandb.save(f"{outdir}/model.pth")
 
     print("Saving images...")
     imgdir = f"{outdir}/images"
@@ -208,13 +213,15 @@ def run(config, do_plots=False):
     np.save(f"{outdir}/frames.npy", frames)
 
     # Finish wandb run
-    wandb.finish()
+    if config["wandb_logging"]:
+        wandb.finish()
 
 
 if __name__ == "__main__":
     # Configuration
     config = {
         "experiment_name": "ddpm_1000steps",
+        "wandb_logging": True,
         "dataset": "checkerboard",
         "train_batch_size": 256,
         "eval_batch_size": 1000,
