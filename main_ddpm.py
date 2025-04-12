@@ -236,7 +236,7 @@ if __name__ == "__main__":
         "save_images_step": 20,
         "gradient_clipping": None,
         "dataset_size": 80000,
-        "importance_sampling_batch_size": None,
+        "importance_sampling_batch_size": 10,
         "uniform_prob": 0.001,
         "optimizer_type": "sgd",
         "momentum": 0.9,
@@ -249,4 +249,4 @@ if __name__ == "__main__":
         "use_simplified_loss": False,
     }
 
-    run(config, do_plots=True)
+    run(config, do_plots=False)

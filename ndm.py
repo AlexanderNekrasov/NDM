@@ -24,12 +24,11 @@ class NDM(nn.Module):
 
         # Initialize importance sampling buffers if needed
         if importance_sampling_batch_size is not None:
-            self.register_buffer(
-                "L_t", torch.zeros(num_timesteps, importance_sampling_batch_size)
-            )
-            self.register_buffer(
-                "L_t_counts", torch.zeros(num_timesteps, dtype=torch.long)
-            )
+            self.L_t = torch.zeros(num_timesteps, importance_sampling_batch_size)
+            self.L_t_counts = torch.zeros(num_timesteps, dtype=torch.long)
+            self.L_t_ptr = torch.zeros(num_timesteps, dtype=torch.long)
+            self.uniform_prob = uniform_prob
+        if schedule_config["type"] == "linear":
             self.register_buffer(
                 "L_t_ptr", torch.zeros(num_timesteps, dtype=torch.long)
             )
@@ -243,7 +242,9 @@ def train_epoch(
         global_step += 1
 
         if importance_sampling:
-            for t, l in zip(timesteps, loss.detach()):
+            loss_nll = loss.detach().cpu()  
+            timesteps = timesteps.cpu()
+            for t, l in zip(timesteps, loss_nll):
                 idx = t - 1
                 ptr = ndm.L_t_ptr[idx]
                 ndm.L_t[idx, ptr] = l

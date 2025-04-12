@@ -24,15 +24,9 @@ class DDPM(nn.Module):
 
         # Initialize importance sampling buffers if needed
         if importance_sampling_batch_size is not None:
-            self.register_buffer(
-                "L_t", torch.zeros(num_timesteps, importance_sampling_batch_size)
-            )
-            self.register_buffer(
-                "L_t_counts", torch.zeros(num_timesteps, dtype=torch.long)
-            )
-            self.register_buffer(
-                "L_t_ptr", torch.zeros(num_timesteps, dtype=torch.long)
-            )
+            self.L_t = torch.zeros(num_timesteps, importance_sampling_batch_size)
+            self.L_t_counts = torch.zeros(num_timesteps, dtype=torch.long)
+            self.L_t_ptr = torch.zeros(num_timesteps, dtype=torch.long)
             self.uniform_prob = uniform_prob
         if schedule_config["type"] == "linear":
             # example schedule_config: {"type": "linear", "beta_start": 0.0001, "beta_end": 0.02}
@@ -212,10 +206,9 @@ def train_epoch(
         else:
             weights = torch.ones(ddpm.num_timesteps, device=device)
             weights = weights / weights.sum()
+        weights = weights.to(device)
         timesteps = (
-            torch.multinomial(weights, num_samples=batch.shape[0], replacement=True).to(
-                device
-            )
+            torch.multinomial(weights, num_samples=batch.shape[0], replacement=True)
             + 1
         )
 
@@ -253,7 +246,9 @@ def train_epoch(
         global_step += 1
 
         if importance_sampling:
-            for t, l in zip(timesteps, loss_nll.detach()):
+            loss_nll = loss_nll.detach().cpu()
+            timesteps = timesteps.cpu()
+            for t, l in zip(timesteps, loss_nll):
                 idx = t - 1
                 ptr = ddpm.L_t_ptr[idx]
                 ddpm.L_t[idx, ptr] = l
