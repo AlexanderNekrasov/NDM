@@ -29,11 +29,6 @@ class NDM(nn.Module):
             self.L_t_ptr = torch.zeros(num_timesteps, dtype=torch.long)
             self.uniform_prob = uniform_prob
         if schedule_config["type"] == "linear":
-            self.register_buffer(
-                "L_t_ptr", torch.zeros(num_timesteps, dtype=torch.long)
-            )
-            self.uniform_prob = uniform_prob
-        if schedule_config["type"] == "linear":
             # example schedule_config: {"type": "linear", "beta_start": 0.0001, "beta_end": 0.02}
             betas = torch.linspace(
                 schedule_config["beta_start"],
@@ -170,7 +165,7 @@ def train_epoch(
             importance_sampling
             and ndm.L_t_counts.min() >= ndm.importance_sampling_batch_size
         ):
-            weights = torch.sqrt(torch.mean(ndm.L_t**2, dim=1))
+            weights = torch.sqrt(torch.mean(ndm.L_t**2, dim=1)).to(device)
             weights = weights / weights.sum()
 
             # Add numerical stability checks
