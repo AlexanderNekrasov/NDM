@@ -14,6 +14,7 @@ class NDM(nn.Module):
         num_timesteps=1000,
         importance_sampling_batch_size=None,
         uniform_prob=0.001,
+        predict_noise=True
     ):
 
         super().__init__()
@@ -52,6 +53,7 @@ class NDM(nn.Module):
 
         print("alphas_cumpod:", alphas_cumprod)
         self.register_buffer("alphas_cumprod", alphas_cumprod)
+        self.predict_noise = predict_noise
 
     def F(self, x, t):
         if torch.is_tensor(t):
@@ -62,6 +64,7 @@ class NDM(nn.Module):
         return (1 - t_scaled) * x + t_scaled * self.model_F(x, t)
 
     def reconstruct_x0(self, z_t, t, noise):
+        assert self.predict_noise
         s1 = torch.sqrt(1 / self.alphas_cumprod[t])
         s2 = torch.sqrt(1 / self.alphas_cumprod[t] - 1)
         s1 = s1.reshape(-1, 1)
@@ -109,7 +112,10 @@ class NDM(nn.Module):
 
     def step(self, model_output, timestep, sample):
         t = timestep
-        pred_original_sample = self.reconstruct_x0(sample, t, model_output)
+        if self.predict_noise:
+            pred_original_sample = self.reconstruct_x0(sample, t, model_output)
+        else:
+            pred_original_sample = model_output
         pred_prev_sample = self.q_posterior(pred_original_sample, sample, t)
 
         variance = 0
@@ -204,7 +210,11 @@ def train_epoch(
 
         noisy = ndm.add_noise(batch, noise, timesteps)
         noise_pred = ndm.model(noisy, timesteps)
-        xhat = ndm.reconstruct_x0(noisy, timesteps, noise_pred)
+        if ndm.predict_noise:
+            xhat = ndm.reconstruct_x0(noisy, timesteps, noise_pred)
+        else:
+            xhat = noise_pred
+        print(xhat.min(), xhat.max())
 
         coef_1 = torch.sqrt(ndm.alphas_cumprod[timesteps]).view(-1, 1)
         loss_1 = coef_1 * (ndm.F(batch, timesteps - 1) - ndm.F(xhat, timesteps - 1))
@@ -224,6 +234,10 @@ def train_epoch(
         assert not loss_1.isinf().any()
         assert not loss_2.isinf().any()
         assert not loss_mean.isinf()
+        assert not loss_1.isnan().any()
+        assert not loss_2.isnan().any()
+        assert not loss_mean.isnan()
+        print(loss_mean)
 
         optimizer.zero_grad()
         loss_mean.backward()

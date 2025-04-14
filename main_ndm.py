@@ -55,6 +55,7 @@ def run(config, do_plots=False):
         num_timesteps=config["num_timesteps"],
         importance_sampling_batch_size=config["importance_sampling_batch_size"],
         uniform_prob=config["uniform_prob"],
+        predict_noise=config["predict_noise"],
     ).to(device)
 
     # Load pretrained model if specified
@@ -227,19 +228,19 @@ if __name__ == "__main__":
     # Configuration
     config = {
         "experiment_name": "ndm_1000steps",
-        "wandb_logging": True,
+        "wandb_logging": False,
         "dataset": "checkerboard",
         "train_batch_size": 256,
         "eval_batch_size": 1000,
         "num_epochs": 1000,
-        "learning_rate": 1e-4,
+        "learning_rate": 1e-5,
         "num_timesteps": 1000,
         # "schedule_config": {"type": "cosine", "min_alpha": 0.0001, "max_alpha": 0.9999},
         "schedule_config": {"type": "linear", "beta_start": 0.0001, "beta_end": 0.02},
         "embedding_size": 128,
         "hidden_size": 512,
         "hidden_layers": 5,
-        "save_images_step": 20,
+        "save_images_step": 1,
         "gradient_clipping": None,
         "dataset_size": 80000,
         "importance_sampling_batch_size": None,
@@ -248,10 +249,13 @@ if __name__ == "__main__":
         "momentum": 0.9,
         "weight_decay": 0.0001,
         # New parameters for model loading
-        "load_pretrained": True,
-        "pretrained_run_id": "ndm/esjakfmk",  # wandb run ID to load model from
-        "pretrained_model_path": "exps/ndm_1000steps/model.pth",  # local path to load model from (alternative to wandb)
-        "pretrained_epochs": 1000,  # number of epochs the pretrained model was trained for
+        "load_pretrained": False,
+        # "pretrained_run_id": "ndm/esjakfmk",  # wandb run ID to load model from
+        "pretrained_run_id": None,
+        # "pretrained_model_path": "exps/ndm_1000steps/model.pth",  # local path to load model from (alternative to wandb)
+        "pretrained_model_path": None,
+        "pretrained_epochs": 0,  # number of epochs the pretrained model was trained for
+        "predict_noise": False,
     }
 
-    run(config, do_plots=False)
+    run(config, do_plots=True)
