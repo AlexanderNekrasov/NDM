@@ -221,13 +221,13 @@ def train_epoch(
             xhat = noise_pred
         # print(xhat.min(), xhat.max())
 
-        coef_1 = torch.sqrt(ndm.alphas_cumprod[timesteps]).view(-1, 1)
+        coef_1 = torch.sqrt(a_s).view(-1, 1)
         loss_1 = coef_1 * (ndm.F(batch, timesteps - 1) - ndm.F(xhat, timesteps - 1))
 
         coef_2 = (
             torch.sqrt(sigma_s**2 - sigmast_squared)
             / sigma_t
-            * torch.sqrt(ndm.alphas_cumprod[timesteps])
+            * torch.sqrt(a_t)
         ).view(-1, 1)
         loss_2 = coef_2 * (ndm.F(xhat, timesteps) - ndm.F(batch, timesteps))
 
