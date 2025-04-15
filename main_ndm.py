@@ -56,6 +56,7 @@ def run(config, do_plots=False):
         importance_sampling_batch_size=config["importance_sampling_batch_size"],
         uniform_prob=config["uniform_prob"],
         predict_noise=config["predict_noise"],
+        ddim_sampling=config["ddim_sampling"]
     ).to(device)
 
     # Load pretrained model if specified
@@ -104,15 +105,15 @@ def run(config, do_plots=False):
     # Calculate total steps and create scheduler
     total_training_steps = len(dataloader) * config["num_epochs"]
     final_lr = 1e-8
-    lr_lambda = (
-        lambda current_step: max(
+    def lr_lambda(current_step):
+        if current_step < config["warmup_steps"]:
+            return float(current_step) / float(max(1, config["warmup_steps"]))
+        
+        decay_factor = max(
             0.0,
-            float(total_training_steps - current_step)
-            / float(max(1, total_training_steps)),
+            float(total_training_steps - current_step) / float(max(1, total_training_steps - config["warmup_steps"]))
         )
-        * (1.0 - final_lr / config["learning_rate"])
-        + final_lr / config["learning_rate"]
-    )
+        return decay_factor * (1.0 - final_lr / config["learning_rate"]) + final_lr / config["learning_rate"]
     # Using LambdaLR for more explicit linear decay control
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
@@ -189,7 +190,8 @@ def run(config, do_plots=False):
                         {"training_visualization": wandb.Image(plt)},
                         step=epoch + config["pretrained_epochs"],
                     )
-                plt.show()
+                plt.show(block=False)
+                plt.pause(0.1)
                 plt.close()
 
     print("Saving model...")
@@ -233,8 +235,9 @@ if __name__ == "__main__":
         "train_batch_size": 256,
         "eval_batch_size": 1000,
         "num_epochs": 1000,
-        "learning_rate": 1e-5,
-        "num_timesteps": 1000,
+        "learning_rate": 1e-4,
+        "warmup_steps": 1000,
+        "num_timesteps": 30,
         # "schedule_config": {"type": "cosine", "min_alpha": 0.0001, "max_alpha": 0.9999},
         "schedule_config": {"type": "linear", "beta_start": 0.0001, "beta_end": 0.02},
         "embedding_size": 128,
@@ -255,7 +258,8 @@ if __name__ == "__main__":
         # "pretrained_model_path": "exps/ndm_1000steps/model.pth",  # local path to load model from (alternative to wandb)
         "pretrained_model_path": None,
         "pretrained_epochs": 0,  # number of epochs the pretrained model was trained for
-        "predict_noise": False,
+        "predict_noise": True,
+        "ddim_sampling": False
     }
 
     run(config, do_plots=True)

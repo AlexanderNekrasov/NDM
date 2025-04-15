@@ -14,7 +14,8 @@ class NDM(nn.Module):
         num_timesteps=1000,
         importance_sampling_batch_size=None,
         uniform_prob=0.001,
-        predict_noise=True
+        predict_noise=True,
+        ddim_sampling=False
     ):
 
         super().__init__()
@@ -54,6 +55,7 @@ class NDM(nn.Module):
         print("alphas_cumpod:", alphas_cumprod)
         self.register_buffer("alphas_cumprod", alphas_cumprod)
         self.predict_noise = predict_noise
+        self.ddim_sampling = ddim_sampling
 
     def F(self, x, t):
         if torch.is_tensor(t):
@@ -80,9 +82,12 @@ class NDM(nn.Module):
         a_t = self.alphas_cumprod[t]
         sigma_s = torch.sqrt(1 - a_s)
         sigma_t = torch.sqrt(1 - a_t)
-        sigma_st = torch.sqrt(
-            (sigma_t**2 - a_t / a_s * sigma_s**2) * sigma_s**2 / sigma_t**2
-        )
+        if self.ddim_sampling:
+            sigma_st = 0
+        else:
+            sigma_st = torch.sqrt(
+                (sigma_t**2 - a_t / a_s * sigma_s**2) * sigma_s**2 / sigma_t**2
+            )
 
         s0 = torch.sqrt(self.alphas_cumprod[t - 1])
         s1 = -torch.sqrt(sigma_s**2 - sigma_st**2) / sigma_t * torch.sqrt(a_t)
@@ -119,7 +124,7 @@ class NDM(nn.Module):
         pred_prev_sample = self.q_posterior(pred_original_sample, sample, t)
 
         variance = 0
-        if t > 1:
+        if t > 1 and not self.ddim_sampling:
             noise = torch.randn_like(model_output)
             variance = (self.get_variance(t) ** 0.5) * noise
 
@@ -214,7 +219,7 @@ def train_epoch(
             xhat = ndm.reconstruct_x0(noisy, timesteps, noise_pred)
         else:
             xhat = noise_pred
-        print(xhat.min(), xhat.max())
+        # print(xhat.min(), xhat.max())
 
         coef_1 = torch.sqrt(ndm.alphas_cumprod[timesteps]).view(-1, 1)
         loss_1 = coef_1 * (ndm.F(batch, timesteps - 1) - ndm.F(xhat, timesteps - 1))
@@ -227,7 +232,7 @@ def train_epoch(
         loss_2 = coef_2 * (ndm.F(xhat, timesteps) - ndm.F(batch, timesteps))
 
         loss = loss_1 + loss_2
-        loss = loss**2
+        loss = loss ** 2
         loss = loss.view(loss.shape[0], -1).sum(dim=1)
         loss = 1 / (2 * sigmast_squared) * loss
         loss_mean = (loss / weights[timesteps - 1]).mean()
@@ -237,7 +242,7 @@ def train_epoch(
         assert not loss_1.isnan().any()
         assert not loss_2.isnan().any()
         assert not loss_mean.isnan()
-        print(loss_mean)
+        # print(loss_mean)
 
         optimizer.zero_grad()
         loss_mean.backward()
