@@ -52,8 +52,12 @@ class NDM(nn.Module):
         else:
             raise ValueError(f"Unknown schedule type: {schedule_config['type']}")
 
-        print("alphas_cumpod:", alphas_cumprod)
-        self.register_buffer("alphas_cumprod", alphas_cumprod)
+        if schedule_config.get("learnable", False):
+            self.alphas_cumprod = nn.Parameter(alphas_cumprod)
+        else:
+            self.register_buffer("alphas_cumprod", alphas_cumprod)
+        print("alphas_cumpod:", self.alphas_cumprod)
+        print("alphas_cumprod.required_grad", self.alphas_cumprod.requires_grad)
         self.predict_noise = predict_noise
         self.ddim_sampling = ddim_sampling
 

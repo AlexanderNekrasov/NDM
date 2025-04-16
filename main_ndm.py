@@ -86,16 +86,19 @@ def run(config, do_plots=False):
         wandb.watch(ndm, log_freq=100)
 
     # Initialize optimizer based on config
+    optimizer_parameters = list(ndm.model.parameters()) + list(ndm.model_F.parameters())
+    if config["schedule_config"].get("learnable", False):
+        optimizer_parameters += [ndm.alphas_cumprod]
     if config["optimizer_type"].lower() == "sgd":
         optimizer = torch.optim.SGD(
-            list(ndm.model.parameters()) + list(ndm.model_F.parameters()),
+            optimizer_parameters,
             lr=config["learning_rate"],
             momentum=config["momentum"],
             weight_decay=config["weight_decay"],
         )
     elif config["optimizer_type"].lower() == "adamw":
         optimizer = torch.optim.AdamW(
-            list(ndm.model.parameters()) + list(ndm.model_F.parameters()),
+            optimizer_parameters,
             lr=config["learning_rate"],
             weight_decay=config["weight_decay"],
         )
@@ -132,6 +135,8 @@ def run(config, do_plots=False):
             global_step,
             config["gradient_clipping"],
         )
+        if config["schedule_config"].get("learnable", False):
+            print("alphas_cumprod after train_epoch:", ndm.alphas_cumprod)
         losses.extend(cur_losses)
         epoch_loss = np.mean(cur_losses)
         epoch_losses.append(epoch_loss)
@@ -238,8 +243,8 @@ if __name__ == "__main__":
         "learning_rate": 1e-4,
         "warmup_steps": 1000,
         "num_timesteps": 30,
-        # "schedule_config": {"type": "cosine", "min_alpha": 0.0001, "max_alpha": 0.9999},
-        "schedule_config": {"type": "linear", "beta_start": 0.0001, "beta_end": 0.02},
+        "schedule_config": {"type": "cosine", "min_alpha": 0.0001, "max_alpha": 0.9999, "learnable": False},
+        # "schedule_config": {"type": "linear", "beta_start": 0.0001, "beta_end": 0.02, "learnable": False},
         "embedding_size": 128,
         "hidden_size": 512,
         "hidden_layers": 5,
