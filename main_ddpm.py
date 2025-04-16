@@ -95,15 +95,14 @@ def run(config, do_plots=False):
 
     # Calculate total steps and create scheduler
     total_training_steps = len(dataloader) * config["num_epochs"]
-    final_lr = 1e-8
     lr_lambda = (
         lambda current_step: max(
             0.0,
             float(total_training_steps - current_step)
             / float(max(1, total_training_steps)),
         )
-        * (1.0 - final_lr / config["learning_rate"])
-        + final_lr / config["learning_rate"]
+        * (1.0 - config["final_lr"] / config["learning_rate"])
+        + config["final_lr"] / config["learning_rate"]
     )
     # Using LambdaLR for more explicit linear decay control
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
@@ -227,6 +226,7 @@ if __name__ == "__main__":
         "eval_batch_size": 1000,
         "num_epochs": 1000,
         "learning_rate": 1e-4,
+        "final_lr": 1e-8,
         "num_timesteps": 1000,
         # "schedule_config": {"type": "cosine", "min_alpha": 0.0001, "max_alpha": 0.9999},
         "schedule_config": {"type": "linear", "beta_start": 0.0001, "beta_end": 0.02},

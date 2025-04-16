@@ -107,7 +107,6 @@ def run(config, do_plots=False):
 
     # Calculate total steps and create scheduler
     total_training_steps = len(dataloader) * config["num_epochs"]
-    final_lr = 1e-8
     def lr_lambda(current_step):
         if current_step < config["warmup_steps"]:
             return float(current_step) / float(max(1, config["warmup_steps"]))
@@ -116,7 +115,7 @@ def run(config, do_plots=False):
             0.0,
             float(total_training_steps - current_step) / float(max(1, total_training_steps - config["warmup_steps"]))
         )
-        return decay_factor * (1.0 - final_lr / config["learning_rate"]) + final_lr / config["learning_rate"]
+        return decay_factor * (1.0 - config["final_lr"] / config["learning_rate"]) + config["final_lr"] / config["learning_rate"]
     # Using LambdaLR for more explicit linear decay control
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
@@ -264,7 +263,8 @@ if __name__ == "__main__":
         "pretrained_model_path": None,
         "pretrained_epochs": 0,  # number of epochs the pretrained model was trained for
         "predict_noise": True,
-        "ddim_sampling": False
+        "ddim_sampling": False,
+        "final_lr": 1e-10
     }
 
     run(config, do_plots=True)
