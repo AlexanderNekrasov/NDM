@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import numpy as np
 from torch.optim import lr_scheduler
+import torch.nn as nn
 import wandb
 
 import datasets
@@ -46,21 +47,23 @@ def run(config, do_plots=False):
         hidden_size=config["hidden_size"],
         hidden_layers=config["hidden_layers"],
         emb_size=config["embedding_size"],
-    )
-
-    ndm = NDM(
-        model=model,
-        model_F=model_F,
-        schedule_config=config["schedule_config"],
-        num_timesteps=config["num_timesteps"],
-        importance_sampling_batch_size=config["importance_sampling_batch_size"],
-        uniform_prob=config["uniform_prob"],
-        predict_noise=config["predict_noise"],
-        ddim_sampling=config["ddim_sampling"]
-    ).to(device)
+    )    
 
     # Load pretrained model if specified
     if config["load_pretrained"]:
+        assert not config.get("was_learnable", False) or config["schedule_config"].get("learnable", False)
+        need_switch = config.get("was_learnable", False) ^ config["schedule_config"].get("learnable", False)
+        config["schedule_config"]["learnable"] = config["was_learnable"]
+        ndm = NDM(
+            model=model,
+            model_F=model_F,
+            schedule_config=config["schedule_config"],
+            num_timesteps=config["num_timesteps"],
+            importance_sampling_batch_size=config["importance_sampling_batch_size"],
+            uniform_prob=config["uniform_prob"],
+            predict_noise=config["predict_noise"],
+            ddim_sampling=config["ddim_sampling"]
+        ).to(device)
         if config["pretrained_model_path"] is None:
             raise ValueError(
                 "pretrained_model_path must be specified when load_pretrained is True"
@@ -71,6 +74,8 @@ def run(config, do_plots=False):
                 config["pretrained_model_path"],
                 run_path=f"{config['pretrained_run_id']}",
             )
+            print(ndm.alphas_cumprod)
+            print(model_path.name)
             ndm.load_state_dict(torch.load(model_path.name, map_location=device))
         elif config["pretrained_model_path"]:
             print(f"Loading model from local path {config['pretrained_model_path']}")
@@ -81,6 +86,21 @@ def run(config, do_plots=False):
             raise ValueError(
                 "Either pretrained_run_id or pretrained_model_path must be specified when load_pretrained is True"
             )
+        if need_switch:
+            ndm.alphas_cumprod = nn.Parameter(ndm.alphas_cumprod, requires_grad=True)
+            config["schedule_config"]["learnable"] = True
+        print('here', need_switch, ndm.alphas_cumprod)
+    else:
+        ndm = NDM(
+            model=model,
+            model_F=model_F,
+            schedule_config=config["schedule_config"],
+            num_timesteps=config["num_timesteps"],
+            importance_sampling_batch_size=config["importance_sampling_batch_size"],
+            uniform_prob=config["uniform_prob"],
+            predict_noise=config["predict_noise"],
+            ddim_sampling=config["ddim_sampling"]
+        ).to(device)
 
     if config["wandb_logging"]:
         wandb.watch(ndm, log_freq=100)

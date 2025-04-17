@@ -171,8 +171,12 @@ def train_epoch(
     ndm.model_F.train()
     epoch_losses = []
     device = next(ndm.parameters()).device
-
+    if ndm.alphas_cumprod.requires_grad:
+        normal = torch.distributions.Normal(0, 1e-4)
     for step, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
+        with torch.no_grad():
+            if ndm.alphas_cumprod[0] > 0.9999:
+                ndm.alphas_cumprod[0] = 0.9999
         batch = batch[0].to(device)
         noise = torch.randn(batch.shape, device=device)
 
@@ -240,6 +244,20 @@ def train_epoch(
         loss = loss.view(loss.shape[0], -1).sum(dim=1)
         loss = 1 / (2 * sigmast_squared) * loss
         loss_mean = (loss / weights[timesteps - 1]).mean()
+        loss_mean_orig = loss_mean
+
+        if ndm.alphas_cumprod.requires_grad:
+            # L_prior
+            d = 2 # dimension of the data
+            alpha_T = ndm.alphas_cumprod[ndm.num_timesteps]
+            sigma_T = torch.sqrt(1 - alpha_T)
+            loss_prior = 1/2 * (d * (sigma_T ** 2 - torch.log(sigma_T) - 1) + alpha_T * (ndm.F(batch, torch.tensor(ndm.num_timesteps, device=device).repeat(batch.shape[0])) ** 2).view(batch.shape[0], -1).sum(dim=1))
+            # L_rec
+            noise = torch.randn_like(batch)
+            z_0 = ndm.add_noise(batch, noise, torch.tensor(0, device=device).repeat(batch.shape[0]))
+            loss_rec = -normal.log_prob(batch - z_0).view(batch.shape[0], -1).sum(dim=1)
+            # print(loss_mean, loss_rec.mean(), loss_prior.mean())
+            loss_mean = loss_mean + loss_rec.mean(axis=0) + loss_prior.mean(axis=0)
         assert not loss_1.isinf().any()
         assert not loss_2.isinf().any()
         assert not loss_mean.isinf()
@@ -256,7 +274,7 @@ def train_epoch(
         optimizer.step()
         scheduler.step()
 
-        epoch_losses.append(loss_mean.detach().item())
+        epoch_losses.append(loss_mean_orig.detach().item())
         global_step += 1
 
         if importance_sampling:
