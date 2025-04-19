@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import numpy as np
+import time
 
 import sys
 sys.path.append("../")
@@ -87,7 +88,7 @@ def show_images(images, return_image, title=""):
         plt.show()
 
 
-def run(config, do_plots=False):
+def run(config, unet_config, do_plots=False):
     # Initialize wandb
     if config["wandb_logging"]:
         wandb.init(
@@ -109,12 +110,12 @@ def run(config, do_plots=False):
 
     model = UNetModel(
         in_channels=3,
-        model_channels=64,
+        model_channels=unet_config["model_channels"],
         out_channels=3,
-        num_res_blocks=2,
-        attention_resolutions=(16, 8),
-        dropout=0.1,
-        channel_mult=(1, 2, 4),
+        num_res_blocks=unet_config["num_res_blocks"],
+        attention_resolutions=unet_config["attention_resolutions"],
+        dropout=unet_config["dropout"],
+        channel_mult=unet_config["channel_mult"],
         conv_resample=True,
         dims=2,
         num_classes=None,
@@ -128,12 +129,12 @@ def run(config, do_plots=False):
 
     model_F = UNetModel(
         in_channels=3,
-        model_channels=64,
+        model_channels=unet_config["model_channels"],
         out_channels=3,
-        num_res_blocks=2,
-        attention_resolutions=(16, 8),
-        dropout=0.1,
-        channel_mult=(1, 2, 4),
+        num_res_blocks=unet_config["num_res_blocks"],
+        attention_resolutions=unet_config["attention_resolutions"],
+        dropout=unet_config["dropout"],
+        channel_mult=unet_config["channel_mult"],
         conv_resample=True,
         dims=2,
         num_classes=None,
@@ -227,6 +228,13 @@ def run(config, do_plots=False):
     # Using LambdaLR for more explicit linear decay control
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
+    if config["restore_scheduler"]:
+        current_lr = optimizer.param_groups[0]['lr']
+        for i in range(next_epoch_num):
+            scheduler.step()
+        for g in optimizer.param_groups:
+            g['lr'] = current_lr
+
     global_step = 0
     frames = []
     losses = []
@@ -301,29 +309,12 @@ def run(config, do_plots=False):
                 'optimizer_state_dict': optimizer.state_dict(),
             }, f"{outdir}/checkpoint_epoch_{epoch}.pth")
 
-    # save model to wandb
-    if config["wandb_logging"]:
-        wandb.save(f"{outdir}/checkpoint_epoch_{config['num_epochs'] - 1}.pth")
-    #
-    # print("Saving images...")
-    # imgdir = f"{outdir}/images"
-    # os.makedirs(imgdir, exist_ok=True)
-    # frames = np.stack(frames)
-    # xmin, xmax = -6, 6
-    # ymin, ymax = -6, 6
-    # for i, frame in enumerate(frames):
-    #     plt.figure(figsize=(10, 10))
-    #     plt.scatter(frame[:, 0], frame[:, 1])
-    #     plt.xlim(xmin, xmax)
-    #     plt.ylim(ymin, ymax)
-    #     plt.savefig(f"{imgdir}/{i:04}.png")
-    #     plt.close()
-    # print("Saving loss as numpy array...")
+            # save model to wandb
+            if config["wandb_logging"]:
+                wandb.save(f"{outdir}/checkpoint_epoch_{config['num_epochs'] - 1}.pth")
+
+    print("Saving loss as numpy array...")
     np.save(f"{outdir}/loss.npy", np.array(losses))
-    #
-    # print("Saving frames...")
-    # np.save(f"{outdir}/frames.npy", frames)
-    #
     # Finish wandb run
     if config["wandb_logging"]:
         wandb.finish()
@@ -333,12 +324,12 @@ if __name__ == "__main__":
     config = {
         "experiment_name": "ndm_images_1000steps",
         "wandb_logging": False,
-        "image_size": 16,
+        "image_size": 64,
         "train_batch_size": 64,
         "eval_batch_size": 16,
-        "num_epochs": 4,
-        "learning_rate": 3e-4,
-        "warmup_steps": 0,
+        "num_epochs": 10,
+        "learning_rate": 1e-4,
+        "warmup_steps": 1000,
         "num_timesteps": 1000,
         "schedule_config": {"type": "cosine", "min_alpha": 0.0001, "max_alpha": 0.9999,
                             "learnable": False},
@@ -352,15 +343,24 @@ if __name__ == "__main__":
         "momentum": 0.9,
         "weight_decay": 0.00001,
         # New parameters for model loading
-        "load_pretrained": True,
+        "load_pretrained": False,
         # "pretrained_run_id": "ndm/esjakfmk",  # wandb run ID to load model from
         "pretrained_run_id": None,
         # "pretrained_model_path": "exps/ndm_1000steps/model.pth",  # local path to load model from (alternative to wandb)
         "pretrained_checkpoint_path": "exps/ndm_images_1000steps/checkpoint_epoch_2.pth",
+        "restore_scheduler": False,
         "was_learnable": False,
         "predict_noise": True,
         "ddim_sampling": False,
         "final_lr": 1e-10
     }
 
-    run(config, do_plots=True)
+    unet_config = {
+        "model_channels": 128,
+        "num_res_blocks": 3,
+        "attention_resolutions": (16, 8),
+        "dropout": 0.0,
+        "channel_mult": (1, 2, 4, 8)
+    }
+
+    run(config, unet_config, do_plots=True)
