@@ -12,8 +12,8 @@ import time
 import sys
 sys.path.append("../")
 from ndm import NDM, train_epoch
-from celeba import CelebADataset as CelebA
-from unet_openai.unet import UNetModel
+from .celeba import CelebADataset as CelebA
+from .unet_openai.unet import UNetModel
 
 
 class CelebaCustomDataset(CelebA):
