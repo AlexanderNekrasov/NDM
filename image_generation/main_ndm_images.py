@@ -29,7 +29,7 @@ def create_celeba_dataloader(config):
                         )
     dataset = CelebaCustomDataset(
         transform=transform,
-        root_dir='/home/tem_shett/porn/CelebA/celeba/celeba',
+        root_dir=config['celeba_dataset_path'],
     )
     loader = DataLoader(dataset, config["train_batch_size"], shuffle=True)
     return loader
@@ -323,6 +323,7 @@ def run(config, unet_config, do_plots=False):
 if __name__ == "__main__":
     config = {
         "experiment_name": "ndm_images_1000steps",
+        "celeba_dataset_path": '/home/tem_shett/porn/CelebA/celeba/celeba',
         "wandb_logging": False,
         "image_size": 64,
         "train_batch_size": 64,
