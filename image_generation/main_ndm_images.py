@@ -9,9 +9,7 @@ import torch.nn as nn
 import numpy as np
 import time
 
-import sys
-sys.path.append("../")
-from ndm import NDM, train_epoch
+from .ndm import NDM, train_epoch
 from .celeba import CelebADataset as CelebA
 from .unet_openai.unet import UNetModel
 
@@ -310,8 +308,8 @@ def run(config, unet_config, do_plots=False):
             }, f"{outdir}/checkpoint_epoch_{epoch}.pth")
 
             # save model to wandb
-            if config["wandb_logging"]:
-                wandb.save(f"{outdir}/checkpoint_epoch_{config['num_epochs'] - 1}.pth")
+            #if config["wandb_logging"]:
+            #    wandb.save(f"{outdir}/checkpoint_epoch_{config['num_epochs'] - 1}.pth")
 
     print("Saving loss as numpy array...")
     np.save(f"{outdir}/loss.npy", np.array(losses))
