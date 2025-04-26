@@ -303,8 +303,7 @@ def run(config, unet_config, do_plots=False):
 
             torch.save({
                 'next_epoch': epoch + 1,
-                'model_state_dict': ndm.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
+                'model_state_dict': ndm.state_dict()
             }, f"{outdir}/checkpoint_epoch_{epoch}.pth")
 
             # save model to wandb
