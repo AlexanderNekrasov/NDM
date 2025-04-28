@@ -55,7 +55,11 @@ class DDPM(nn.Module):
             raise ValueError(f"Unknown schedule type: {schedule_config['type']}")
 
         print("alphas_cumpod:", alphas_cumprod)
-        self.register_buffer("alphas_cumprod", alphas_cumprod)
+        if schedule_config.get("learnable", False):
+            self.alphas_cumprod = nn.Parameter(alphas_cumprod)
+        else:
+            self.register_buffer("alphas_cumprod", alphas_cumprod)
+        print("alphas_cumprod.required_grad", self.alphas_cumprod.requires_grad)
 
     def reconstruct_x0(
         self,
@@ -143,6 +147,7 @@ class DDPM(nn.Module):
 
         return s1 * x_start + s2 * x_noise
 
+    @torch.no_grad()
     def sample(self, n_samples: int):
         self.model.eval()
         device = next(self.parameters()).device
@@ -173,8 +178,13 @@ def train_epoch(
     ddpm.model.train()
     epoch_losses = []
     device = next(ddpm.parameters()).device
+    if ddpm.alphas_cumprod.requires_grad:
+        normal = torch.distributions.Normal(0, 1e-4)
 
     for step, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
+        with torch.no_grad():
+            if ddpm.alphas_cumprod[0] > 0.9999:
+                ddpm.alphas_cumprod[0] = 0.9999
         batch = batch[0].to(device)
         noise = torch.randn(batch.shape, device=device)
 
@@ -231,9 +241,23 @@ def train_epoch(
         loss_nll = loss_nll.view(loss_nll.shape[0], -1).sum(dim=1)
         loss_nll = loss_nll / (2 * sigmast_squared)
         loss_mean = (loss_nll / weights[timesteps - 1]).mean()
+        loss_mean_orig = loss_mean
+
+        if ddpm.alphas_cumprod.requires_grad:
+            # L_prior
+            d = 2 # dimension of the data
+            alpha_T = ddpm.alphas_cumprod[ddpm.num_timesteps]
+            sigma_T = torch.sqrt(1 - alpha_T)
+            loss_prior = 1/2 * (d * (sigma_T ** 2 - torch.log(sigma_T) - 1) + alpha_T * (batch ** 2).view(batch.shape[0], -1).sum(dim=1))
+            # L_rec
+            noise = torch.randn_like(batch)
+            z_0 = ddpm.add_noise(batch, noise, torch.tensor(0, device=device).repeat(batch.shape[0]))
+            loss_rec = -normal.log_prob(batch - z_0).view(batch.shape[0], -1).sum(dim=1)
+            loss_mean = loss_mean + loss_rec.mean(axis=0) + loss_prior.mean(axis=0)
 
         optimizer.zero_grad()
         if use_simplified_loss:
+            assert not ddpm.alphas_cumprod.requires_grad
             loss_simple.backward()
         else:
             loss_mean.backward()
@@ -242,7 +266,7 @@ def train_epoch(
         optimizer.step()
         scheduler.step()
 
-        epoch_losses.append(loss_mean.detach().item())
+        epoch_losses.append(loss_mean_orig.detach().item())
         global_step += 1
 
         if importance_sampling:
