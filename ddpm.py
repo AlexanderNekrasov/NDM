@@ -195,9 +195,10 @@ def train_epoch(
                             ddpm.alphas_cumprod[i], ddpm.alphas_cumprod[i-1] = ddpm.alphas_cumprod[i-1], ddpm.alphas_cumprod[i]
                             changed = True
                     if not changed:
+                        min_delta = 2e-6
                         for i in range(1, ddpm.num_timesteps):
-                            if ddpm.alphas_cumprod[i] + 0.0001 > ddpm.alphas_cumprod[i-1]:
-                                ddpm.alphas_cumprod[i] = ddpm.alphas_cumprod[i - 1] - 0.0001
+                            if ddpm.alphas_cumprod[i] + min_delta > ddpm.alphas_cumprod[i-1]:
+                                ddpm.alphas_cumprod[i] = ddpm.alphas_cumprod[i - 1] - min_delta
                                 changed = True
 
         batch = batch[0].to(device)

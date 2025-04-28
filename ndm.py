@@ -174,9 +174,24 @@ def train_epoch(
     if ndm.alphas_cumprod.requires_grad:
         normal = torch.distributions.Normal(0, 1e-4)
     for step, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
-        with torch.no_grad():
-            if ndm.alphas_cumprod[0] > 0.9999:
-                ndm.alphas_cumprod[0] = 0.9999
+        if ndm.alphas_cumprod.requires_grad:
+            with torch.no_grad():
+                changed = True
+                while changed:
+                    changed = False
+                    if ndm.alphas_cumprod[0] > 0.9999:
+                        ndm.alphas_cumprod[0] = 0.9999
+                        changed = True
+                    for i in range(1, ndm.num_timesteps):
+                        if ndm.alphas_cumprod[i] > ndm.alphas_cumprod[i-1]:
+                            ndm.alphas_cumprod[i], ndm.alphas_cumprod[i-1] = ndm.alphas_cumprod[i-1], ndm.alphas_cumprod[i]
+                            changed = True
+                    if not changed:
+                        min_delta = 2e-6
+                        for i in range(1, ndm.num_timesteps):
+                            if ndm.alphas_cumprod[i] + min_delta > ndm.alphas_cumprod[i-1]:
+                                ndm.alphas_cumprod[i] = ndm.alphas_cumprod[i - 1] - min_delta
+                                changed = True
         if type(batch) == list: # 2d-dataset
             batch = batch[0].to(device)
         else:
