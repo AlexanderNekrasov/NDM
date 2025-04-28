@@ -182,9 +182,24 @@ def train_epoch(
         normal = torch.distributions.Normal(0, 1e-4)
 
     for step, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
-        with torch.no_grad():
-            if ddpm.alphas_cumprod[0] > 0.9999:
-                ddpm.alphas_cumprod[0] = 0.9999
+        if ddpm.alphas_cumprod.requires_grad:
+            with torch.no_grad():
+                changed = True
+                while changed:
+                    changed = False
+                    if ddpm.alphas_cumprod[0] > 0.9999:
+                        ddpm.alphas_cumprod[0] = 0.9999
+                        changed = True
+                    for i in range(1, ddpm.num_timesteps):
+                        if ddpm.alphas_cumprod[i] > ddpm.alphas_cumprod[i-1]:
+                            ddpm.alphas_cumprod[i], ddpm.alphas_cumprod[i-1] = ddpm.alphas_cumprod[i-1], ddpm.alphas_cumprod[i]
+                            changed = True
+                    if not changed:
+                        for i in range(1, ddpm.num_timesteps):
+                            if ddpm.alphas_cumprod[i] + 0.0001 > ddpm.alphas_cumprod[i-1]:
+                                ddpm.alphas_cumprod[i] = ddpm.alphas_cumprod[i - 1] - 0.0001
+                                changed = True
+
         batch = batch[0].to(device)
         noise = torch.randn(batch.shape, device=device)
 
