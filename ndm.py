@@ -182,13 +182,13 @@ def train_epoch(
                     if ndm.alphas_cumprod[0] > 0.9999:
                         ndm.alphas_cumprod[0] = 0.9999
                         changed = True
-                    for i in range(1, ndm.num_timesteps):
+                    for i in range(1, ndm.num_timesteps + 1):
                         if ndm.alphas_cumprod[i] > ndm.alphas_cumprod[i-1]:
                             ndm.alphas_cumprod[i], ndm.alphas_cumprod[i-1] = ndm.alphas_cumprod[i-1], ndm.alphas_cumprod[i]
                             changed = True
                     if not changed:
                         min_delta = 2e-6
-                        for i in range(1, ndm.num_timesteps):
+                        for i in range(1, ndm.num_timesteps + 1):
                             if ndm.alphas_cumprod[i] + min_delta > ndm.alphas_cumprod[i-1]:
                                 ndm.alphas_cumprod[i] = ndm.alphas_cumprod[i - 1] - min_delta
                                 changed = True

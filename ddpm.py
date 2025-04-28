@@ -190,13 +190,13 @@ def train_epoch(
                     if ddpm.alphas_cumprod[0] > 0.9999:
                         ddpm.alphas_cumprod[0] = 0.9999
                         changed = True
-                    for i in range(1, ddpm.num_timesteps):
+                    for i in range(1, ddpm.num_timesteps + 1):
                         if ddpm.alphas_cumprod[i] > ddpm.alphas_cumprod[i-1]:
                             ddpm.alphas_cumprod[i], ddpm.alphas_cumprod[i-1] = ddpm.alphas_cumprod[i-1], ddpm.alphas_cumprod[i]
                             changed = True
                     if not changed:
                         min_delta = 2e-6
-                        for i in range(1, ddpm.num_timesteps):
+                        for i in range(1, ddpm.num_timesteps + 1):
                             if ddpm.alphas_cumprod[i] + min_delta > ddpm.alphas_cumprod[i-1]:
                                 ddpm.alphas_cumprod[i] = ddpm.alphas_cumprod[i - 1] - min_delta
                                 changed = True
