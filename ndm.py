@@ -269,7 +269,7 @@ def train_epoch(
             d = 2 # dimension of the data
             alpha_T = ndm.alphas_cumprod[ndm.num_timesteps]
             sigma_T = torch.sqrt(1 - alpha_T)
-            loss_prior = 1/2 * (d * (sigma_T ** 2 - torch.log(sigma_T) - 1) + alpha_T * (ndm.F(batch, torch.tensor(ndm.num_timesteps, device=device).repeat(batch.shape[0])) ** 2).view(batch.shape[0], -1).sum(dim=1))
+            loss_prior = 1/2 * (d * (sigma_T ** 2 - 2 * torch.log(sigma_T) - 1) + alpha_T * (ndm.F(batch, torch.tensor(ndm.num_timesteps, device=device).repeat(batch.shape[0])) ** 2).view(batch.shape[0], -1).sum(dim=1))
             # L_rec
             noise = torch.randn_like(batch)
             z_0 = ndm.add_noise(batch, noise, torch.tensor(0, device=device).repeat(batch.shape[0]))
