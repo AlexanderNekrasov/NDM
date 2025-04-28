@@ -95,15 +95,15 @@ def run(config, do_plots=False):
 
     # Calculate total steps and create scheduler
     total_training_steps = len(dataloader) * config["num_epochs"]
-    lr_lambda = (
-        lambda current_step: max(
+    def lr_lambda(current_step):
+        if current_step < config["warmup_steps"]:
+            return float(current_step) / float(max(1, config["warmup_steps"]))
+        
+        decay_factor = max(
             0.0,
-            float(total_training_steps - current_step)
-            / float(max(1, total_training_steps)),
+            float(total_training_steps - current_step) / float(max(1, total_training_steps - config["warmup_steps"]))
         )
-        * (1.0 - config["final_lr"] / config["learning_rate"])
-        + config["final_lr"] / config["learning_rate"]
-    )
+        return decay_factor * (1.0 - config["final_lr"] / config["learning_rate"]) + config["final_lr"] / config["learning_rate"]
     # Using LambdaLR for more explicit linear decay control
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
@@ -226,6 +226,7 @@ if __name__ == "__main__":
         "eval_batch_size": 1000,
         "num_epochs": 1000,
         "learning_rate": 1e-4,
+        "warmup_steps": 1000,
         "final_lr": 1e-8,
         "num_timesteps": 1000,
         # "schedule_config": {"type": "cosine", "min_alpha": 0.0001, "max_alpha": 0.9999},
@@ -236,7 +237,7 @@ if __name__ == "__main__":
         "save_images_step": 20,
         "gradient_clipping": None,
         "dataset_size": 80000,
-        "importance_sampling_batch_size": 10,
+        "importance_sampling_batch_size": None,
         "uniform_prob": 0.001,
         "optimizer_type": "sgd",
         "momentum": 0.9,
